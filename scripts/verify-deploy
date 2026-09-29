@@ -1,0 +1,52 @@
+#!/usr/bin/env node
+// Live smoke test for the cross-CPSE fingerprint function.
+//
+//   npm run verify-deploy -- https://your-site.netlify.app
+//
+// The local test-suite exercises the function logic against a real local
+// Blobs server, but only a deployed site can prove the Netlify runtime, the
+// Blobs environment and the routing are wired correctly. This publishes a
+// throw-away code as two different fake CPSEs and checks that each is told
+// about the other. It writes only a unique "NMC-VERIFY-<random>" code.
+
+const base = (process.argv[2] ?? "").replace(/\/+$/, "");
+if (!/^https?:\/\//.test(base)) {
+  console.error("usage: npm run verify-deploy -- https://<your-site>.netlify.app");
+  process.exit(2);
+}
+const url = `${base}/.netlify/functions/fingerprint-index`;
+const code = `NMC-VERIFY-${Math.random().toString(36).slice(2, 10).toUpperCase()}`;
+
+async function call(cpseId) {
+  const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nmcCodes: [code], cpseId }) });
+  const text = await res.text();
+  let body;
+  try { body = JSON.parse(text); } catch { body = text; }
+  return { status: res.status, body };
+}
+
+const checks = [];
+function check(name, ok, detail) {
+  checks.push(ok);
+  console.log(`${ok ? "PASS" : "FAIL"}  ${name}${ok ? "" : `  -> ${detail}`}`);
+}
+
+const a = await call("VERIFY-A");
+check("function reachable and returns 200", a.status === 200, `status ${a.status}: ${JSON.stringify(a.body).slice(0, 200)}`);
+check("first publisher sees no others", JSON.stringify(a.body?.results?.[code]) === "[]", JSON.stringify(a.body));
+
+const b = await call("VERIFY-B");
+check("second CPSE is told about the first (write is visible to next read)", JSON.stringify(b.body?.results?.[code]) === '["VERIFY-A"]', JSON.stringify(b.body));
+
+const a2 = await call("VERIFY-A");
+check("re-publishing is idempotent and sees the other CPSE", JSON.stringify(a2.body?.results?.[code]) === '["VERIFY-B"]', JSON.stringify(a2.body));
+
+const bad = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nmcCodes: ["bad code!"], cpseId: "X" }) });
+check("invalid input is rejected with 400", bad.status === 400, `status ${bad.status}`);
+
+const get = await fetch(url);
+check("GET is rejected with 405", get.status === 405, `status ${get.status}`);
+
+const failed = checks.filter((c) => !c).length;
+console.log(failed === 0 ? `\nAll ${checks.length} checks passed against ${base}` : `\n${failed} of ${checks.length} checks FAILED against ${base}`);
+process.exit(failed === 0 ? 0 : 1);
