@@ -1,0 +1,139 @@
+// Core logic of the cross-CPSE fingerprint index, separated from the Netlify
+// runtime so it can be tested against a real Blobs server locally and reused
+// unchanged by the deployed function.
+//
+// Privacy model (unchanged): the index only ever holds "NMC code -> which
+// CPSEs use it". No description, spec, quantity or price is ever received.
+//
+// Storage layout: ONE blob per (code, CPSE) pair —  <code>/<cpse>.
+// The previous layout kept a JSON array per code and updated it with
+// read-modify-write, so two CPSEs publishing the same code at the same
+// moment could overwrite each other's entry (last writer wins). With one
+// key per pair every writer touches only its own key, so concurrent
+// publishes cannot lose data, and no compare-and-swap is needed.
+
+export const LIMITS = {
+  maxCodesPerRequest: 500,
+  maxCodeLength: 150,
+  maxCpseLength: 40,
+  maxBodyBytes: 256 * 1024,
+  concurrency: 20,
+};
+
+const CODE_RE = /^[A-Za-z0-9][A-Za-z0-9._\-/+]*$/;
+const CPSE_RE = /^[A-Za-z0-9][A-Za-z0-9 &._\-]*$/;
+
+const json = (status, body) =>
+  new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+
+export function pairKey(nmcCode, cpseId) {
+  return `${encodeURIComponent(nmcCode)}/${encodeURIComponent(cpseId)}`;
+}
+const codePrefix = (nmcCode) => `${encodeURIComponent(nmcCode)}/`;
+
+async function mapLimit(items, limit, fn) {
+  const out = new Array(items.length);
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (next < items.length) {
+        const i = next++;
+        out[i] = await fn(items[i], i);
+      }
+    })
+  );
+  return out;
+}
+
+/** Validates the body; returns { cpseId, codes, single } or { error }. */
+export function parseRequest(body) {
+  if (!body || typeof body !== "object") return { error: "Body must be a JSON object" };
+  const { cpseId } = body;
+  if (typeof cpseId !== "string" || cpseId.length === 0 || cpseId.length > LIMITS.maxCpseLength || !CPSE_RE.test(cpseId)) {
+    return { error: "cpseId is missing or invalid" };
+  }
+  const single = typeof body.nmcCode === "string";
+  const raw = single ? [body.nmcCode] : body.nmcCodes;
+  if (!Array.isArray(raw) || raw.length === 0) return { error: "nmcCode or a non-empty nmcCodes array is required" };
+  if (raw.length > LIMITS.maxCodesPerRequest) return { error: `At most ${LIMITS.maxCodesPerRequest} codes per request` };
+  for (const c of raw) {
+    if (typeof c !== "string" || c.length === 0 || c.length > LIMITS.maxCodeLength || !CODE_RE.test(c)) {
+      return { error: "nmcCodes contains an invalid code" };
+    }
+  }
+  return { cpseId, codes: [...new Set(raw)], single };
+}
+
+/**
+ * store: anything with  set(key, value)  and  list({ prefix }) -> { blobs: [{ key }] }
+ * (a Netlify Blobs store satisfies this exactly).
+ */
+export async function handleFingerprintRequest(req, store) {
+  if (req.method !== "POST") return new Response("Method not allowed", { status: 405 });
+
+  const declared = Number(req.headers.get("content-length") ?? 0);
+  if (declared > LIMITS.maxBodyBytes) return json(413, { error: "Body too large" });
+
+  let text;
+  try {
+    text = await req.text();
+  } catch {
+    return json(400, { error: "Unreadable body" });
+  }
+  if (text.length > LIMITS.maxBodyBytes) return json(413, { error: "Body too large" });
+
+  let body;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    return json(400, { error: "Invalid JSON" });
+  }
+
+  const parsed = parseRequest(body);
+  if (parsed.error) return json(400, { error: parsed.error });
+  const { cpseId, codes, single } = parsed;
+
+  try {
+    const results = await mapLimit(codes, LIMITS.concurrency, async (nmcCode) => {
+      const { blobs } = await store.list({ prefix: codePrefix(nmcCode) });
+      const mine = pairKey(nmcCode, cpseId);
+      const others = [];
+      let alreadyPublished = false;
+      for (const b of blobs) {
+        if (b.key === mine) alreadyPublished = true;
+        else others.push(decodeURIComponent(b.key.slice(codePrefix(nmcCode).length)));
+      }
+      if (!alreadyPublished) await store.set(mine, new Date().toISOString());
+      return [nmcCode, others.sort()];
+    });
+
+    if (single) {
+      const [nmcCode, otherCpses] = results[0];
+      return json(200, { nmcCode, otherCpses });
+    }
+    return json(200, { results: Object.fromEntries(results) });
+  } catch (err) {
+    console.error("fingerprint-index store error", err);
+    return json(500, { error: "Index unavailable" });
+  }
+}
+
+/**
+ * Prefer strongly-consistent listing (so a just-published pair is visible to
+ * the next caller), but degrade to the default eventually-consistent store if
+ * the runtime isn't configured for strong reads (BlobsConsistencyError)
+ * rather than failing every request. Writes never need strong consistency.
+ */
+export function withConsistencyFallback(strongStore, eventualStore) {
+  return {
+    async list(opts) {
+      try {
+        return await strongStore.list(opts);
+      } catch (err) {
+        if (err && err.name === "BlobsConsistencyError") return eventualStore.list(opts);
+        throw err;
+      }
+    },
+    set: (key, value) => eventualStore.set(key, value),
+  };
+}
