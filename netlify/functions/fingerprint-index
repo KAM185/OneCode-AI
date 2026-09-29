@@ -1,0 +1,17 @@
+import { getStore } from "@netlify/blobs";
+import { handleFingerprintRequest, withConsistencyFallback } from "../lib/fingerprint-core.mjs";
+
+// The ONLY server-side component. All logic lives in ../lib/fingerprint-core.mjs
+// (so it can be tested locally); this file just binds it to Netlify Blobs.
+//
+// No `config.path` on purpose: every function is already served at
+// /.netlify/functions/<name>, which is the URL the client calls. The previous
+// config re-declared that same reserved prefix as a *custom* path — redundant
+// at best, and per the Netlify docs a custom path replaces the default URL.
+
+const STORE = "nmc-fingerprint-index";
+
+export default async (req) => {
+  const store = withConsistencyFallback(getStore({ name: STORE, consistency: "strong" }), getStore({ name: STORE }));
+  return handleFingerprintRequest(req, store);
+};
