@@ -1,0 +1,37 @@
+// Pre-downloads the MiniLM embedding model used by src/lib/embeddings.ts and
+// saves it under public/models/, so it can be served from the SAME origin
+// as the deployed app instead of fetched from the public model hub at
+// runtime. This is what makes a genuinely air-gapped / internal-network-only
+// deployment possible — see the README section "Air-gapped deployment".
+//
+// Usage (run once, on a machine WITH internet access, before deploying):
+//   node scripts/setup-offline.mjs
+//
+// Then in src/lib/embeddings.ts, set:
+//   env.allowLocalModels = true;
+//   env.localModelPath = "/models/";
+// and remove/skip the remote pipeline() call's implicit hub fetch.
+//
+// NOTE: this script itself needs network access to huggingface.co to do the
+// one-time download — it cannot run inside a fully offline environment. Run
+// it once on any internet-connected machine, then ship the resulting
+// public/models/ folder as a static asset with the rest of the app.
+
+import { pipeline, env } from "@huggingface/transformers";
+import { mkdirSync } from "node:fs";
+
+const OUT_DIR = new URL("../public/models/", import.meta.url).pathname;
+
+async function main() {
+  mkdirSync(OUT_DIR, { recursive: true });
+  env.cacheDir = OUT_DIR;
+  console.log(`Downloading Xenova/all-MiniLM-L6-v2 into ${OUT_DIR} ...`);
+  await pipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2", { dtype: "q8" });
+  console.log("Done. Copy public/models/ alongside your deployed dist/ build,");
+  console.log("then point env.localModelPath at it in src/lib/embeddings.ts.");
+}
+
+main().catch((err) => {
+  console.error("Offline setup failed (this step needs internet access once):", err.message);
+  process.exit(1);
+});
