@@ -3,18 +3,7 @@
 AI-driven material code standardization across CPSEs — SIH 2026, Problem
 Statement 26099 (Ministry of Petroleum & Natural Gas / CPCL).
 
-## What changed in v2.4
 
-- **One-click demo** — *Load 8-CPSE demo data* on the upload panel fetches the
-  8 synthetic files from `public/sample-data/`, tags each with the right CPSE
-  and runs the pipeline. When files are picked by hand, the CPSE tag is now
-  pre-selected from the file name (e.g. `ONGC_material_master.csv` → ONGC).
-- **Headline card** — items → national codes, % fewer codes, auto-resolved,
-  awaiting review and high-safety-risk counts, all counted from the run
-  (`headline.ts`).
-- **Guided workflow strip** — Upload → Match → Review → Export, showing where
-  the run is and how many items await review.
-- `tests/demo.test.ts` runs the whole demo set through the pipeline.
 
 ## What changed in v2.3
 
