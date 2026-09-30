@@ -1,0 +1,36 @@
+import { useState } from "react";
+import { loadAuditLog, verifyAuditChain, type ChainVerification } from "../lib/audit";
+
+export default function AuditPanel() {
+  const [result, setResult] = useState<ChainVerification | null>(null);
+  const [checking, setChecking] = useState(false);
+  const count = loadAuditLog().length;
+
+  async function runCheck() {
+    setChecking(true);
+    try {
+      setResult(await verifyAuditChain());
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  return (
+    <div className="panel" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+      <div>
+        <p style={{ fontSize: 13, fontWeight: 600, margin: 0 }}>Audit log</p>
+        <p style={{ fontSize: 12, color: "var(--text-secondary)", margin: "2px 0 0" }}>
+          {count} entries, hash-chained and append-only. Signed review actions carry a real ECDSA signature.
+        </p>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        {result && (
+          <span className={`badge ${result.valid ? "success" : "danger"}`}>
+            {result.valid ? "Chain verified — no tampering detected" : `Tampering detected at entry ${result.brokenAt ?? result.invalidSignatureAt}`}
+          </span>
+        )}
+        <button onClick={runCheck} disabled={checking || count === 0}>{checking ? "Verifying…" : "Verify chain integrity"}</button>
+      </div>
+    </div>
+  );
+}
