@@ -11,6 +11,8 @@ import KnowledgeGraph from "./components/KnowledgeGraph";
 import AuditPanel from "./components/AuditPanel";
 import ValidationLab from "./components/ValidationLab";
 import ExplainDrawer from "./components/ExplainDrawer";
+import HeadlineCard from "./components/HeadlineCard";
+import StepStrip from "./components/StepStrip";
 import { buildGraph } from "./lib/graph";
 import { scenarioPairs } from "./lib/validationData";
 import { runPipeline, type CpseUpload } from "./lib/pipeline";
@@ -113,11 +115,13 @@ export default function App() {
         </div>
       </header>
 
+      <StepStrip hasResult={!!result} running={running} pending={reviewQueue.length} onReview={() => setTab("review")} onExport={() => setTab("export")} />
+
       <div className="card" style={{ marginBottom: 16 }}>
         <UploadPanel onRun={handleRun} running={running} progress={progress} />
         {error && <div className="panel alert-error" role="alert"><b>Could not process upload.</b> {error}</div>}
       </div>
-      {!result && !running && !error && <p className="empty-note">Upload one file per CPSE to begin. Results, review queue, registry and audit trail appear here.</p>}
+      {!result && !running && !error && <p className="empty-note">Click “Load 8-CPSE demo data” or upload one file per CPSE to begin. Results, review queue, registry and audit trail appear here.</p>}
 
       {result && (
         <>
@@ -131,6 +135,7 @@ export default function App() {
 
           {tab === "overview" && (
             <>
+              <div className="card" style={{ marginBottom: 16 }}><HeadlineCard result={result} /></div>
               <div className="card" style={{ marginBottom: 16 }}><Dashboard result={result} nav={{ relationships, evidencePairs: evidencePool.length, validationPairs: labSize, onOpenGraph: () => setTab("graph"), onOpenValidation: () => setTab("audit"),
                 onOpenEvidence: () => setEvidence(evidencePool.find((m) => m.status === "pending-review") ?? evidencePool[0] ?? null) }} /></div>
               {indexReachable === false && (
