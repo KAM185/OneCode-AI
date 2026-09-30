@@ -1,0 +1,11 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+  functions = "netlify/functions"
+
+[functions]
+  node_bundler = "esbuild"
+
+# NOTE: no catch-all SPA redirect on purpose. The app is a single page, and a
+# catch-all would make missing model files return index.html (HTTP 200)
+# instead of 404, which breaks the embedding model's local-then-remote fallback.
