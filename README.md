@@ -1,31 +1,8 @@
+[README.md](https://github.com/user-attachments/files/32861908/README.md)
 # OneCode AI
 
 AI-driven material code standardization across CPSEs — SIH 2026, Problem
 Statement 26099 (Ministry of Petroleum & Natural Gas / CPCL).
-
-
-
-## What changed in v2.3
-
-Three features added on top of v2.1, integrated into the existing dashboard.
-Nothing here invents data: each is a projection of, or a measurement run on,
-what the app already computes.
-
-- **Material Knowledge Graph** (`graph.ts`, `KnowledgeGraph.tsx`) — CPSEs,
-  source materials, canonical NMC codes, substitutes and superseded codes and
-  the relations between them, built only from the pipeline result and the
-  substitution / supersession registries.
-- **Explainable AI / Match Evidence** (`explain.ts`, `ExplainDrawer.tsx`) —
-  per-pair attribute comparison, safety checks and the reason for the outcome
-  (auto issue / human review / reject), taken from the real decision rule.
-- **Material Intelligence Validation Lab** (`validation.ts`,
-  `validationData.ts`, `ValidationLab.tsx`) — upload a labelled pairs file
-  (Material A, Material B, Ground Truth); every metric is computed by running
-  the real matcher on it. Percentages are withheld below a minimum dataset size.
-
-Run `npm test` for the current suite.
-
----
 
 ## What changed in v2.1
 
@@ -181,8 +158,7 @@ src/lib/
   economics.ts       quantity & price roll-up (demand, value, price harmonisation)
   export.ts          CSV builders: migration mapping, substitutions, economics
 src/components/      UploadPanel, Dashboard, ReviewQueue, ResultsTable, ExportPanel,
-                     EconomicsPanel, SubstitutionPanel, LifecyclePanel, AuditPanel,
-                     KnowledgeGraph, ExplainDrawer, ValidationLab
+                     EconomicsPanel, SubstitutionPanel, LifecyclePanel, AuditPanel
 netlify/functions/
   fingerprint-index.mjs   binds the core to Netlify Blobs
 netlify/lib/
@@ -217,8 +193,7 @@ netlify dev
 
 ## What kinds of files it handles
 
-A synthetic 8-CPSE demo set (1,039 rows, mixed formats) ships in
-`public/sample-data/` (served at `/sample-data/`) — see its README. The parser handles real-world
+No sample dataset ships with the app. The parser handles real-world
 messiness directly:
 - **Individual or mixed CPSE files** — a mixed file with an
   organization/CPSE column is detected automatically; per-row CPSE
